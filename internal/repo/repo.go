@@ -2,6 +2,7 @@ package repo
 
 import (
 	"auth-service/internal/config"
+	"auth-service/internal/models"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,7 @@ type repository struct {
 }
 
 type Repository interface {
-	RegisterOwner(ctx context.Context, owner Owner) (string, error)
+	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
 	LoginOwner(ctx context.Context, email, password string) (string, error)
 }
 
@@ -62,7 +63,7 @@ func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, erro
 	return &repository{pool}, nil
 }
 
-func (r *repository) RegisterOwner(ctx context.Context, owner Owner) (string, error) {
+func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
 	tx, err := r.pool.Begin(context.Background())
 	if err != nil {
 		return "", errors.New("failed to begin transaction")
@@ -78,7 +79,7 @@ func (r *repository) RegisterOwner(ctx context.Context, owner Owner) (string, er
 	err = tx.QueryRow(
 		context.Background(),
 		checkExistenceQuery,
-		owner.email, owner.phone,
+		owner.Email, owner.Phone,
 	).Scan(&exists)
 	if err != nil {
 		return "", errors.New("failed to check owner existence")
@@ -89,7 +90,7 @@ func (r *repository) RegisterOwner(ctx context.Context, owner Owner) (string, er
 		return "", errors.New("owner with this email or phone already exists")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(owner.password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(owner.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to hash password")
 	}
@@ -98,7 +99,7 @@ func (r *repository) RegisterOwner(ctx context.Context, owner Owner) (string, er
 	err = tx.QueryRow(
 		context.Background(),
 		createOwnerQuery,
-		owner.name, owner.email, owner.phone, owner.kind, owner.description, string(hashedPassword),
+		owner.Name, owner.Email, owner.Phone, owner.Kind, owner.Description, string(hashedPassword),
 	).Scan(&ownerID)
 	if err != nil {
 		return "", errors.New("failed to create owner")
