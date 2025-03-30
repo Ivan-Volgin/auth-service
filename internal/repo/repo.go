@@ -5,8 +5,12 @@ import (
 	"auth-service/internal/models"
 	"context"
 	"fmt"
+	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
+	pgxMigrate "github.com/golang-migrate/migrate/v4/database/pgx"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
@@ -60,76 +64,67 @@ func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, erro
 		return nil, errors.Wrap(err, "failed to create PostgreSQL connection pool")
 	}
 
+	if err := applyMigrations(pool); err != nil {
+		return nil, errors.Wrap(err, "failed to apply migrations")
+	}
+
 	return &repository{pool}, nil
 }
 
-func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
-	tx, err := r.pool.Begin(context.Background())
+func applyMigrations(pool *pgxpool.Pool) error {
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+
+	driver, err := pgxMigrate.WithInstance(sqlDB, &pgxMigrate.Config{})
 	if err != nil {
-		return "", errors.New("failed to begin transaction")
+		return errors.Wrap(err, "failed to initialize pgx migrate driver")
 	}
 
-	defer func() {
-		if err != nil {
-			tx.Rollback(context.Background())
-		}
-	}()
-
-	var exists bool
-	err = tx.QueryRow(
-		context.Background(),
-		checkExistenceQuery,
-		owner.Email, owner.Phone,
-	).Scan(&exists)
+	migrationsPath := "./migrations"
+	m, err := migrate.NewWithDatabaseInstance(
+		fmt.Sprintf("file://%s", migrationsPath),
+		"postgres",
+		driver,
+	)
 	if err != nil {
-		return "", errors.New("failed to check owner existence")
+		return errors.Wrap(err, "failed to create migrate instance")
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return errors.Wrap(err, "failed to apply migrations")
+	}
+
+	return nil
+}
+
+func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
+	exists, err := r.checkExistence(ctx, owner.Email, owner.Password)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to check owner existence")
 	}
 
 	if exists {
-		tx.Rollback(context.Background())
 		return "", errors.New("owner with this email or phone already exists")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(owner.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to hash password")
-	}
-
 	var ownerID string
-	err = tx.QueryRow(
+	err = r.pool.QueryRow(
 		context.Background(),
 		createOwnerQuery,
-		owner.Name, owner.Email, owner.Phone, owner.Kind, owner.Description, string(hashedPassword),
+		owner.Name, owner.Email, owner.Phone, owner.Kind, owner.Description, owner.Password,
 	).Scan(&ownerID)
 	if err != nil {
 		return "", errors.New("failed to create owner")
-	}
-
-	err = tx.Commit(context.Background())
-	if err != nil {
-		return "", errors.New("failed to commit transaction")
 	}
 
 	return ownerID, nil
 }
 
 func (r *repository) LoginOwner(ctx context.Context, email, password string) (string, error) {
-	tx, err := r.pool.Begin(context.Background())
-	if err != nil {
-		return "", errors.New("failed to begin transaction")
-	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback(context.Background())
-		}
-	}()
-
 	var ownerID, storedHash string
-	err = tx.QueryRow(context.Background(), getOwnerByEmailQuery, email).Scan(&ownerID, &storedHash)
+	err := r.pool.QueryRow(context.Background(), getOwnerByEmailQuery, email).Scan(&ownerID, &storedHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			tx.Rollback(context.Background())
 			return "", errors.New("owner not found")
 		}
 		return "", errors.Wrap(err, "failed to fetch owner data")
@@ -138,16 +133,19 @@ func (r *repository) LoginOwner(ctx context.Context, email, password string) (st
 	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			tx.Rollback(context.Background())
 			return "", errors.New("invalid password")
 		}
 		return "", errors.Wrap(err, "failed to compare passwords")
 	}
 
-	err = tx.Commit(context.Background())
-	if err != nil {
-		return "", errors.New("failed to commit transaction")
-	}
-
 	return "token123", nil
+}
+
+func (r *repository) checkExistence(ctx context.Context, email, phone string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(context.Background(), checkExistenceQuery, email, phone).Scan(&exists)
+	if err != nil {
+		return false, errors.New("failed to check owner existence")
+	}
+	return exists, nil
 }

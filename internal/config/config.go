@@ -6,7 +6,12 @@ import (
 
 type AppConfig struct {
 	LogLevel   string
+	Grpc       Grpc
 	PostgreSQL PostgreSQL
+}
+
+type Grpc struct {
+	Port string `envconfig:"PORT" required:"true"`
 }
 
 type PostgreSQL struct {

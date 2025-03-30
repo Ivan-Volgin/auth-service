@@ -1,42 +1,70 @@
 package service
 
 import (
+	AuthService "auth-service/grpc/genproto"
+	"auth-service/internal/config"
 	"auth-service/internal/models"
 	"auth-service/internal/repo"
-	"context"
-	"github.com/pkg/errors"
+	"auth-service/pkg/validator"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"context"
 )
 
-type Service interface {
-	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
-	LoginOwner(ctx context.Context, email, password string) (string, error)
-}
-
-type service struct {
+type authService struct {
+	cfg  config.AppConfig
 	repo repo.Repository
 	log  *zap.SugaredLogger
+	AuthService.UnimplementedAuthServiceServer
 }
 
-func NewService(repo repo.Repository, logger *zap.SugaredLogger) Service {
-	return &service{
+func NewAuthService(cfg config.AppConfig, repo repo.Repository, log *zap.SugaredLogger) AuthService.AuthServiceServer {
+	return &authService{
+		cfg:  cfg,
 		repo: repo,
-		log:  logger,
+		log:  log,
 	}
 }
 
-func (s *service) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
-	ownerId, err := s.repo.RegisterOwner(context.Background(), owner)
-	if err != nil {
-		return "", errors.Wrap(err, "Failed to register owner")
+func (a *authService) Register(ctx context.Context, request *AuthService.RegisterRequest) (*AuthService.RegisterResponse, error) {
+	if err := validator.Validate(ctx, request); err != nil {
+		a.log.Errorf("Validation error: %s", err)
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	return ownerId, nil
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.GetPassword()), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+
+	_, err = a.repo.RegisterOwner(ctx, models.Owner{
+		Name:        request.GetName(),
+		Email:       request.GetEmail(),
+		Phone:       request.GetPhone(),
+		Kind:        request.GetKind(),
+		Description: request.GetDescription(),
+		Password:    string(hashedPassword),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	return &AuthService.RegisterResponse{}, nil
 }
 
-func (s *service) LoginOwner(ctx context.Context, email, password string) (string, error) {
-	token, err := s.repo.LoginOwner(context.Background(), email, password)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to login")
+func (a *authService) Login(ctx context.Context, request *AuthService.LoginRequest) (*AuthService.LoginResponse, error) {
+	if err := validator.Validate(ctx, request); err != nil {
+		a.log.Errorf("Validation error: %s", err)
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	return token, nil
+
+	_, err := a.repo.LoginOwner(ctx, request.GetEmail(), request.GetPassword())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	return &AuthService.LoginResponse{}, nil
 }
