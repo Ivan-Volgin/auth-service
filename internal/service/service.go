@@ -40,7 +40,7 @@ func (a *authService) Register(ctx context.Context, request *AuthService.Registe
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	_, err = a.repo.RegisterOwner(ctx, models.Owner{
+	uuid, err := a.repo.RegisterOwner(ctx, models.Owner{
 		Name:        request.GetName(),
 		Email:       request.GetEmail(),
 		Phone:       request.GetPhone(),
@@ -52,7 +52,7 @@ func (a *authService) Register(ctx context.Context, request *AuthService.Registe
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	return &AuthService.RegisterResponse{}, nil
+	return &AuthService.RegisterResponse{Message: uuid}, nil
 }
 
 func (a *authService) Login(ctx context.Context, request *AuthService.LoginRequest) (*AuthService.LoginResponse, error) {
@@ -61,10 +61,10 @@ func (a *authService) Login(ctx context.Context, request *AuthService.LoginReque
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	_, err := a.repo.LoginOwner(ctx, request.GetEmail(), request.GetPassword())
+	token, err := a.repo.LoginOwner(ctx, request.GetEmail(), request.GetPassword())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	return &AuthService.LoginResponse{}, nil
+	return &AuthService.LoginResponse{Token: token}, nil
 }

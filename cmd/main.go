@@ -61,6 +61,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	logger.Infof("Starting graceful shutdown...")
+
+	logger.Infof("Closing database connection...")
+	repository.Close()
+	logger.Infof("Database connection closed.")
+
 	logger.Info("Shutting down gRPC server...")
 	grpcServer.GracefulStop()
+	logger.Infof("Server shutdown completed.")
+
+	logger.Infof("Graceful shutdown completed.")
 }

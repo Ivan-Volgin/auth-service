@@ -5,12 +5,8 @@ import (
 	"auth-service/internal/models"
 	"context"
 	"fmt"
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
-
-	pgxMigrate "github.com/golang-migrate/migrate/v4/database/pgx"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +27,7 @@ type repository struct {
 type Repository interface {
 	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
 	LoginOwner(ctx context.Context, email, password string) (string, error)
+	Close()
 }
 
 func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, error) {
@@ -64,14 +61,11 @@ func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, erro
 		return nil, errors.Wrap(err, "failed to create PostgreSQL connection pool")
 	}
 
-	if err := applyMigrations(pool); err != nil {
-		return nil, errors.Wrap(err, "failed to apply migrations")
-	}
-
 	return &repository{pool}, nil
 }
 
-func applyMigrations(pool *pgxpool.Pool) error {
+// Оставляю функцию на всякий случай, в будующем будет удалена, миграции будут применяться другим способом
+/*func applyMigrations(pool *pgxpool.Pool) error {
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer sqlDB.Close()
 
@@ -95,6 +89,18 @@ func applyMigrations(pool *pgxpool.Pool) error {
 	}
 
 	return nil
+}*/
+
+func (r *repository) Close() {
+	stats := r.pool.Stat()
+	fmt.Println(float64(stats.TotalConns()))
+
+	if r.pool != nil {
+		r.pool.Close()
+	}
+
+	stats = r.pool.Stat()
+	fmt.Println(float64(stats.TotalConns()))
 }
 
 func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
