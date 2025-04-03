@@ -6,6 +6,7 @@ import (
 	"auth-service/internal/models"
 	"auth-service/internal/repo"
 	"auth-service/pkg/validator"
+	"errors"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
@@ -61,10 +62,18 @@ func (a *authService) Login(ctx context.Context, request *AuthService.LoginReque
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	token, err := a.repo.LoginOwner(ctx, request.GetEmail(), request.GetPassword())
+	passwordHash, err := a.repo.LoginOwner(ctx, request.GetEmail())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	return &AuthService.LoginResponse{Token: token}, nil
+	err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(request.GetPassword()))
+	if err != nil {
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	return &AuthService.LoginResponse{Token: "token123"}, nil
 }

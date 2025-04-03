@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -17,7 +16,7 @@ const (
         INSERT INTO owners (name, email, phone, kind, description, password_hash, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id`
 	checkExistenceQuery  = `SELECT EXISTS(SELECT 1 FROM owners WHERE email = $1 OR phone = $2)`
-	getOwnerByEmailQuery = `SELECT id, password_hash FROM owners WHERE email = $1`
+	getOwnerByEmailQuery = `SELECT password_hash FROM owners WHERE email = $1`
 )
 
 type repository struct {
@@ -26,7 +25,7 @@ type repository struct {
 
 type Repository interface {
 	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
-	LoginOwner(ctx context.Context, email, password string) (string, error)
+	LoginOwner(ctx context.Context, email string) (string, error)
 	Close()
 }
 
@@ -92,15 +91,9 @@ func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, erro
 }*/
 
 func (r *repository) Close() {
-	stats := r.pool.Stat()
-	fmt.Println(float64(stats.TotalConns()))
-
 	if r.pool != nil {
 		r.pool.Close()
 	}
-
-	stats = r.pool.Stat()
-	fmt.Println(float64(stats.TotalConns()))
 }
 
 func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (string, error) {
@@ -115,7 +108,7 @@ func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (str
 
 	var ownerID string
 	err = r.pool.QueryRow(
-		context.Background(),
+		ctx,
 		createOwnerQuery,
 		owner.Name, owner.Email, owner.Phone, owner.Kind, owner.Description, owner.Password,
 	).Scan(&ownerID)
@@ -126,9 +119,9 @@ func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (str
 	return ownerID, nil
 }
 
-func (r *repository) LoginOwner(ctx context.Context, email, password string) (string, error) {
-	var ownerID, storedHash string
-	err := r.pool.QueryRow(context.Background(), getOwnerByEmailQuery, email).Scan(&ownerID, &storedHash)
+func (r *repository) LoginOwner(ctx context.Context, email string) (string, error) {
+	var storedHash string
+	err := r.pool.QueryRow(ctx, getOwnerByEmailQuery, email).Scan(&storedHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", errors.New("owner not found")
@@ -136,20 +129,12 @@ func (r *repository) LoginOwner(ctx context.Context, email, password string) (st
 		return "", errors.Wrap(err, "failed to fetch owner data")
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
-	if err != nil {
-		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return "", errors.New("invalid password")
-		}
-		return "", errors.Wrap(err, "failed to compare passwords")
-	}
-
-	return "token123", nil
+	return storedHash, nil
 }
 
 func (r *repository) checkExistence(ctx context.Context, email, phone string) (bool, error) {
 	var exists bool
-	err := r.pool.QueryRow(context.Background(), checkExistenceQuery, email, phone).Scan(&exists)
+	err := r.pool.QueryRow(ctx, checkExistenceQuery, email, phone).Scan(&exists)
 	if err != nil {
 		return false, errors.New("failed to check owner existence")
 	}
