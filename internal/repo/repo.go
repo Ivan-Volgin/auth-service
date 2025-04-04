@@ -15,8 +15,32 @@ const (
 	createOwnerQuery = `
         INSERT INTO owners (name, email, phone, kind, description, password_hash, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id`
+
 	checkExistenceQuery  = `SELECT EXISTS(SELECT 1 FROM owners WHERE email = $1 OR phone = $2)`
 	getOwnerByEmailQuery = `SELECT password_hash FROM owners WHERE email = $1`
+
+	insertRefreshTokenQuery = `
+		INSERT INTO auth_tokens (user_id, refresh_token, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())
+		RETURNING id;
+	`
+
+	deleteRefreshTokenQuery = `
+		DELETE FROM auth_tokens
+		WHERE user_id = $1;
+	`
+
+	getRefreshTokenQuery = `
+		SELECT refresh_token
+		FROM auth_tokens
+		WHERE user_id = $1;
+	`
+
+	updateRefreshTokenQuery = `
+		UPDATE auth_tokens
+		SET refresh_token = $1, updated_at = NOW(), created_at = $2
+		WHERE user_id = $3;
+	`
 )
 
 type repository struct {
@@ -26,6 +50,12 @@ type repository struct {
 type Repository interface {
 	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
 	LoginOwner(ctx context.Context, email string) (string, error)
+
+	NewRefreshToken(ctx context.Context, params NewRefreshTokenParams) (int64, error)
+	DeleteRefreshToken(ctx context.Context, params DeleteRefreshTokenParams) error
+	GetRefreshToken(ctx context.Context, params GetRefreshTokenParams) ([]string, error)
+	UpdateRefreshToken(ctx context.Context, params UpdateRefreshTokenParams) error
+
 	Close()
 }
 
@@ -139,4 +169,47 @@ func (r *repository) checkExistence(ctx context.Context, email, phone string) (b
 		return false, errors.New("failed to check owner existence")
 	}
 	return exists, nil
+}
+
+func (r *repository) NewRefreshToken(ctx context.Context, params NewRefreshTokenParams) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, insertRefreshTokenQuery, params.UserID, params.Token).Scan(&id)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to insert refresh token")
+	}
+	return id, nil
+}
+
+func (r *repository) DeleteRefreshToken(ctx context.Context, params DeleteRefreshTokenParams) error {
+	_, err := r.pool.Exec(ctx, deleteRefreshTokenQuery, params.UserID)
+	if err != nil {
+		return errors.Wrap(err, "failed to delete refresh token")
+	}
+	return nil
+}
+
+func (r *repository) GetRefreshToken(ctx context.Context, params GetRefreshTokenParams) ([]string, error) {
+	rows, err := r.pool.Query(ctx, getRefreshTokenQuery, params.UserID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to fetch refresh token")
+	}
+	defer rows.Close()
+
+	var tokens []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, errors.Wrap(err, "failed to fetch refresh token")
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, nil
+}
+
+func (r *repository) UpdateRefreshToken(ctx context.Context, params UpdateRefreshTokenParams) error {
+	_, err := r.pool.Exec(ctx, updateRefreshTokenQuery, params.Token, params.CreatedDate, params.UserID)
+	if err != nil {
+		return errors.Wrap(err, "failed to update refresh token")
+	}
+	return nil
 }
