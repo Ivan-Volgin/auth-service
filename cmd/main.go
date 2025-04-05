@@ -5,6 +5,7 @@ import (
 	"auth-service/internal/config"
 	"auth-service/internal/repo"
 	"auth-service/internal/service"
+	"auth-service/pkg/jwt"
 	"auth-service/pkg/logger"
 	"context"
 	"github.com/joho/godotenv"
@@ -40,7 +41,18 @@ func main() {
 		log.Fatal(errors.Wrap(err, "Error initializing repository"))
 	}
 
-	authSrv := service.NewAuthService(cfg, repository, logger)
+	privateKey, err := jwt.ReadPrivateKey()
+	if err != nil {
+		log.Fatal("failed to read private key")
+	}
+	publicKey, err := jwt.ReadPublicKey()
+	if err != nil {
+		log.Fatal("failed to read public key")
+	}
+
+	jwt := jwt.NewJWTClient(privateKey, publicKey, cfg.System.AccessTokenTimeout, cfg.System.RefreshTokenTimeout)
+
+	authSrv := service.NewAuthService(cfg, repository, jwt, logger)
 
 	grpcServer := grpc.NewServer()
 	AuthService.RegisterAuthServiceServer(grpcServer, authSrv)

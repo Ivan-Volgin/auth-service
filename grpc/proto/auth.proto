@@ -33,7 +33,8 @@ message LoginRequest {
 }
 
 message LoginResponse {
-  string token = 1;
+  string access_token = 1;
+  string refresh_token = 2;
 }
 
 message ValidateRequest {

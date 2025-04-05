@@ -2,6 +2,10 @@ package repo
 
 import "database/sql"
 
+type LoginOwnerResponse struct {
+	OwnerId      string
+	PasswordHash string
+}
 type NewRefreshTokenParams struct {
 	UserID string
 	Token  string

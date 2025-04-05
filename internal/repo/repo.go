@@ -17,29 +17,29 @@ const (
         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING id`
 
 	checkExistenceQuery  = `SELECT EXISTS(SELECT 1 FROM owners WHERE email = $1 OR phone = $2)`
-	getOwnerByEmailQuery = `SELECT password_hash FROM owners WHERE email = $1`
+	getOwnerByEmailQuery = `SELECT id, password_hash FROM owners WHERE email = $1`
 
 	insertRefreshTokenQuery = `
-		INSERT INTO auth_tokens (user_id, refresh_token, created_at, updated_at)
+		INSERT INTO auth_tokens (owner_id, refresh_token, created_at, updated_at)
 		VALUES ($1, $2, NOW(), NOW())
 		RETURNING id;
 	`
 
 	deleteRefreshTokenQuery = `
 		DELETE FROM auth_tokens
-		WHERE user_id = $1;
+		WHERE owner_id = $1;
 	`
 
 	getRefreshTokenQuery = `
 		SELECT refresh_token
 		FROM auth_tokens
-		WHERE user_id = $1;
+		WHERE owner_id = $1;
 	`
 
 	updateRefreshTokenQuery = `
 		UPDATE auth_tokens
 		SET refresh_token = $1, updated_at = NOW(), created_at = $2
-		WHERE user_id = $3;
+		WHERE owner_id = $3;
 	`
 )
 
@@ -49,7 +49,7 @@ type repository struct {
 
 type Repository interface {
 	RegisterOwner(ctx context.Context, owner models.Owner) (string, error)
-	LoginOwner(ctx context.Context, email string) (string, error)
+	LoginOwner(ctx context.Context, email string) (*LoginOwnerResponse, error)
 
 	NewRefreshToken(ctx context.Context, params NewRefreshTokenParams) (int64, error)
 	DeleteRefreshToken(ctx context.Context, params DeleteRefreshTokenParams) error
@@ -93,33 +93,6 @@ func NewRepository(ctx context.Context, cfg config.PostgreSQL) (Repository, erro
 	return &repository{pool}, nil
 }
 
-// Оставляю функцию на всякий случай, в будующем будет удалена, миграции будут применяться другим способом
-/*func applyMigrations(pool *pgxpool.Pool) error {
-	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
-
-	driver, err := pgxMigrate.WithInstance(sqlDB, &pgxMigrate.Config{})
-	if err != nil {
-		return errors.Wrap(err, "failed to initialize pgx migrate driver")
-	}
-
-	migrationsPath := "./migrations"
-	m, err := migrate.NewWithDatabaseInstance(
-		fmt.Sprintf("file://%s", migrationsPath),
-		"postgres",
-		driver,
-	)
-	if err != nil {
-		return errors.Wrap(err, "failed to create migrate instance")
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return errors.Wrap(err, "failed to apply migrations")
-	}
-
-	return nil
-}*/
-
 func (r *repository) Close() {
 	if r.pool != nil {
 		r.pool.Close()
@@ -149,17 +122,17 @@ func (r *repository) RegisterOwner(ctx context.Context, owner models.Owner) (str
 	return ownerID, nil
 }
 
-func (r *repository) LoginOwner(ctx context.Context, email string) (string, error) {
-	var storedHash string
-	err := r.pool.QueryRow(ctx, getOwnerByEmailQuery, email).Scan(&storedHash)
+func (r *repository) LoginOwner(ctx context.Context, email string) (*LoginOwnerResponse, error) {
+	var owner LoginOwnerResponse
+	err := r.pool.QueryRow(ctx, getOwnerByEmailQuery, email).Scan(&owner.OwnerId, &owner.PasswordHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", errors.New("owner not found")
+			return nil, errors.New("owner not found")
 		}
-		return "", errors.Wrap(err, "failed to fetch owner data")
+		return nil, errors.Wrap(err, "failed to fetch owner data")
 	}
 
-	return storedHash, nil
+	return &owner, nil
 }
 
 func (r *repository) checkExistence(ctx context.Context, email, phone string) (bool, error) {

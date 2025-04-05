@@ -1,7 +1,7 @@
 CREATE TABLE auth_tokens
 (
     id                 SERIAL PRIMARY KEY,
-    user_id            UUID        NOT NULL,
+    user_id           UUID        NOT NULL,
     access_token       TEXT        NOT NULL UNIQUE,
     refresh_token      TEXT        NOT NULL UNIQUE,
     access_expires_at  TIMESTAMPTZ NOT NULL,
