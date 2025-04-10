@@ -7,6 +7,11 @@ option go_package = "genproto/";
 service AuthService {
   rpc Register (RegisterRequest) returns (RegisterResponse);
   rpc Login (LoginRequest) returns (LoginResponse);
+
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+  rpc NewJWT(NewJWTRequest) returns (NewJWTResponse);
+  rpc RevokeJwt(RevokeJWTRequest) returns (RevokeJWTResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
 }
 
 message RegisterRequest {
@@ -28,5 +33,39 @@ message LoginRequest {
 }
 
 message LoginResponse {
-  string token = 1;
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message ValidateRequest {
+  string access_token = 1;
+}
+
+message ValidateResponse {
+  string user_id = 1;
+}
+
+message NewJWTRequest {
+  string user_id = 1;
+}
+
+message NewJWTResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message RevokeJWTRequest {
+  string user_id = 1;
+}
+
+message RevokeJWTResponse {}
+
+message RefreshRequest {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+  string refresh_token = 2;
 }

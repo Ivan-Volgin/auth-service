@@ -8,6 +8,7 @@ type AppConfig struct {
 	LogLevel   string
 	Grpc       Grpc
 	PostgreSQL PostgreSQL
+	System     System
 }
 
 type Grpc struct {
@@ -24,4 +25,9 @@ type PostgreSQL struct {
 	PoolMaxConns        int           `envconfig:"DB_POOL_MAX_CONNS" default:"5"`
 	PoolMaxConnLifetime time.Duration `envconfig:"DB_POOL_MAX_CONN_LIFETIME" default:"180s"`
 	PoolMaxConnIdleTime time.Duration `envconfig:"DB_POOL_MAX_CONN_IDLE_TIME" default:"100s"`
+}
+
+type System struct {
+	AccessTokenTimeout  time.Duration `envconfig:"ACCESS_TOKEN_TIMEOUT" default:"15m"`
+	RefreshTokenTimeout time.Duration `envconfig:"REFRESH_TOKEN_TIMEOUT" default:"60m"`
 }
