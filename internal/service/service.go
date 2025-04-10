@@ -37,9 +37,9 @@ func NewAuthService(cfg config.AppConfig, repo repo.Repository, jwt jwt.JWTClien
 	}
 }
 
-func (a *authService) Register(ctx context.Context, request *AuthService.RegisterRequest) (*AuthService.RegisterResponse, error) {
+func (c *authService) Register(ctx context.Context, request *AuthService.RegisterRequest) (*AuthService.RegisterResponse, error) {
 	if err := validator.Validate(ctx, request); err != nil {
-		a.log.Errorf("Validation error: %s", err)
+		c.log.Errorf("Validation error: %s", err)
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
@@ -48,7 +48,7 @@ func (a *authService) Register(ctx context.Context, request *AuthService.Registe
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	uuid, err := a.repo.RegisterOwner(ctx, models.Owner{
+	uuid, err := c.repo.RegisterOwner(ctx, models.Owner{
 		Name:        request.GetName(),
 		Email:       request.GetEmail(),
 		Phone:       request.GetPhone(),
@@ -138,7 +138,7 @@ func (c *authService) Validate(
 	}, nil
 }
 
-func (c *authService) NewJwt(
+func (c *authService) NewJWT(
 	ctx context.Context,
 	req *AuthService.NewJWTRequest,
 ) (
@@ -199,7 +199,7 @@ func (c *authService) RevokeJwt(
 	return &AuthService.RevokeJWTResponse{}, nil
 }
 
-func (c *authService) Refesh(
+func (c *authService) Refresh(
 	ctx context.Context,
 	req *AuthService.RefreshRequest,
 ) (
